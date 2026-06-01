@@ -6,24 +6,24 @@ A prototype 2D obstacle-dodge driving game built with
 The game concept is simple: the player controls a blue pixel car near the
 bottom of the screen while a city road scrolls downward to simulate forward
 motion. Obstacles will enter from the top of the screen, and the player will
-dodge them for as long as possible.
+dodge them while clearing levels, collecting coins on some roads, and spending
+coins on a banana item.
 
 ## Status
 
-Initialized prototype. The current build has:
+The current prototype has:
 
 - A simple blue pixel car positioned near the bottom of the screen.
-- Left/right car movement clamped to the road bounds.
+- Left/right/up/down car movement clamped to the road bounds and driving area.
 - A vertical road with curbs and dashed yellow lane markers.
 - City buildings on both sides of the road.
-- Synchronized road and city scrolling through a shared `WORLD_SPEED` constant.
+- Synchronized road and city scrolling through the current world speed.
 - Stable building window patterns, so windows do not flicker while scrolling.
-
-Planned next playable-loop work:
-
-- Spawn obstacles from the top.
-- Detect collisions with simple rectangular hitboxes.
-- Show game-over and restart flow.
+- Spawned traffic cars and box obstacles with forgiving rectangular hitboxes.
+- Level progress, level-complete flow, game-over flow, and restart.
+- Coin pickups on selected levels, currently every third level.
+- A persistent coin wallet across level changes and level restarts.
+- A banana item that costs 67 coins and clears current obstacles when used.
 
 ## Requirements
 
@@ -56,8 +56,12 @@ usagi run
 
 Controls:
 
-- Left/right actions move the car horizontally. On keyboard, use the mappings
-  configured by Usagi for `input.LEFT` and `input.RIGHT`.
+- `input.LEFT` / `input.RIGHT` move the car horizontally.
+- `input.UP` / `input.DOWN` move the car vertically within the driving area.
+- `input.BTN1` restarts after a crash or advances after level completion.
+- `input.BTN2` buys and uses the banana item when you have at least 67 coins.
+
+On keyboard, use the mappings configured by Usagi for those abstract actions.
 
 ## Project Layout
 

@@ -9,6 +9,10 @@ Core concept:
 
 - The player controls a car positioned near the bottom of the screen.
 - The car dodges incoming obstacles.
+- The player can collect coins on some levels and spend 67 coins on a banana
+  item.
+- The banana item is a single-player stand-in for making other players lose: it
+  clears current oncoming obstacles and briefly delays new obstacle spawns.
 - The road/background scrolls downward to simulate the car moving forward.
 - The initialized scene uses a blue pixel car, a vertical city road, curbs,
   dashed yellow lane markers, and buildings on both sides of the road.
@@ -83,6 +87,13 @@ Favor a small, complete arcade loop:
   - Move downward at the current game speed.
   - Despawn after leaving the bottom edge.
   - Use simple rectangles or sprites while prototyping.
+- Coins and items:
+  - Coins appear only on selected coin levels, currently every third level.
+  - Coin pickups scroll with the road speed and despawn below the screen.
+  - The coin wallet persists across level changes and level restarts.
+  - The banana costs 67 coins and is activated with `input.BTN2`.
+  - Using a banana subtracts the cost, clears current obstacles, and creates a
+    short window before new obstacles spawn again.
 - Difficulty:
   - Increase obstacle spawn rate and/or scroll speed gradually.
   - Keep tuning constants near the top of the file.
@@ -134,6 +145,10 @@ Before considering gameplay changes done:
   speed.
 - Check that building windows do not flicker as buildings move.
 - Check that obstacles despawn.
+- Check that coins appear on coin levels, can be collected, and despawn when
+  missed.
+- Check that the banana cannot be used below 67 coins and clears obstacles when
+  used with enough coins.
 - Check that game-over and restart behavior work when present.
 
 If Usagi cannot be executed in the environment, note the exact command attempted
