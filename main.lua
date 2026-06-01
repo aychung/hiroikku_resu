@@ -5,8 +5,10 @@ local ROAD_X = 72
 local ROAD_W = 176
 local ROAD_LEFT = ROAD_X + 8
 local ROAD_RIGHT = ROAD_X + ROAD_W - 8
-local ROAD_SPEED = 86
-local CITY_SPEED = 46
+local WORLD_SPEED = 62
+local CITY_SPACING = 48
+local CITY_PATTERN_COUNT = 8
+local CITY_LOOP_H = CITY_SPACING * CITY_PATTERN_COUNT
 
 local LANE_DASH_W = 4
 local LANE_DASH_H = 18
@@ -48,13 +50,17 @@ local function building_color(index)
   return colors[index % #colors + 1]
 end
 
-local function draw_building(x, y, w, h, color, window_offset)
+local function draw_building(x, y, w, h, color, seed)
   gfx.rect_fill(x, y, w, h, color)
   gfx.rect(x, y, w, h, gfx.COLOR_BLACK)
 
+  local window_row = 0
+
   for wy = y + 7, y + h - 8, 11 do
+    local window_col = 0
+
     for wx = x + 6, x + w - 8, 12 do
-      local light_on = (wx + wy + window_offset) % 3 ~= 0
+      local light_on = (window_col * 2 + window_row + seed) % 4 ~= 0
       local window_color = gfx.COLOR_DARK_GRAY
 
       if light_on then
@@ -62,7 +68,10 @@ local function draw_building(x, y, w, h, color, window_offset)
       end
 
       gfx.rect_fill(wx, wy, 5, 4, window_color)
+      window_col = window_col + 1
     end
+
+    window_row = window_row + 1
   end
 end
 
@@ -79,13 +88,18 @@ local function draw_city_side(left_side)
 
   gfx.rect_fill(curb_x, 0, 5, SCREEN_H, gfx.COLOR_LIGHT_GRAY)
 
-  local spacing = 44
-  local scroll = State.city_scroll % spacing
+  local side_seed = 0
 
-  for i = -1, 5 do
-    local h = 30 + ((i + 5) % 3) * 10
-    local y = math.floor(i * spacing + scroll - spacing)
-    local inset = ((i + 4) % 2) * 6
+  if not left_side then
+    side_seed = 3
+  end
+
+  for i = 0, CITY_PATTERN_COUNT - 1 do
+    local seed = i + side_seed
+    local h = 42 + (seed % 4) * 8
+    local y = math.floor((i * CITY_SPACING + State.city_scroll) % CITY_LOOP_H
+      - CITY_SPACING)
+    local inset = (seed % 2) * 6
     local x = side_x + inset
     local w = building_w - inset
 
@@ -94,7 +108,9 @@ local function draw_city_side(left_side)
       w = building_w - inset
     end
 
-    draw_building(x, y, w, h, building_color(i + 8), i)
+    if y < SCREEN_H and y + h > 0 then
+      draw_building(x, y, w, h, building_color(seed), seed)
+    end
   end
 end
 
@@ -145,8 +161,8 @@ function _init()
 end
 
 function _update(dt)
-  State.road_scroll = (State.road_scroll + ROAD_SPEED * dt) % LANE_DASH_GAP
-  State.city_scroll = (State.city_scroll + CITY_SPEED * dt) % 44
+  State.road_scroll = (State.road_scroll + WORLD_SPEED * dt) % LANE_DASH_GAP
+  State.city_scroll = (State.city_scroll + WORLD_SPEED * dt) % CITY_LOOP_H
 
   local move = 0
 
