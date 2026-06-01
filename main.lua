@@ -5,7 +5,7 @@ local ROAD_X = 72
 local ROAD_W = 176
 local ROAD_LEFT = ROAD_X + 8
 local ROAD_RIGHT = ROAD_X + ROAD_W - 8
-local WORLD_SPEED = 62
+local BASE_WORLD_SPEED = 62
 local CITY_SPACING = 48
 local CITY_PATTERN_COUNT = 8
 local CITY_LOOP_H = CITY_SPACING * CITY_PATTERN_COUNT
@@ -16,8 +16,30 @@ local LANE_DASH_GAP = 34
 
 local CAR_W = 18
 local CAR_H = 28
-local CAR_Y = SCREEN_H - CAR_H - 10
-local CAR_SPEED = 110
+local CAR_START_Y = SCREEN_H - CAR_H - 10
+local CAR_SPEED = 118
+local CAR_VERTICAL_SPEED = 82
+local CAR_TOP = 104
+local CAR_BOTTOM = SCREEN_H - CAR_H - 8
+
+local MAX_LEVEL = 100
+local LEVEL_DISTANCE = 720
+local BOX_W = 16
+local BOX_H = 16
+local TRAFFIC_W = 18
+local TRAFFIC_H = 28
+local CRASH_PAD_X = 4
+local CRASH_PAD_Y = 4
+local JAPANESE_TRICK_SECONDS = 60 * 60
+local TRICK_CAR_CHANCE = 0.08
+local PRESTIGE_CAR_CHANCE = 0.015
+local PRESTIGE_CAR_REWARD = 3
+
+local LANES = {
+  ROAD_X + ROAD_W / 6,
+  ROAD_X + ROAD_W / 2,
+  ROAD_X + ROAD_W * 5 / 6,
+}
 
 local function clamp(value, low, high)
   if value < low then
@@ -31,12 +53,117 @@ local function clamp(value, low, high)
   return value
 end
 
-local function reset_state()
+local function difficulty_for_level(level)
+  if level <= 14 then
+    return "easy"
+  end
+
+  if level <= 23 then
+    return "hard"
+  end
+
+  return "impossible"
+end
+
+local function japanese_trick_active()
+  return (State.japanese_timer or 0) > 0
+end
+
+local function difficulty_label(level)
+  return string.upper(difficulty_for_level(level))
+end
+
+local function world_speed_for_level(level)
+  if level <= 14 then
+    return BASE_WORLD_SPEED + level * 2
+  end
+
+  if level <= 23 then
+    return BASE_WORLD_SPEED + 38 + (level - 14) * 4
+  end
+
+  return BASE_WORLD_SPEED + 82 + (level - 23) * 2.4
+end
+
+local function spawn_interval_for_level(level)
+  if level <= 14 then
+    return math.max(0.72, 1.28 - level * 0.035)
+  end
+
+  if level <= 23 then
+    return math.max(0.42, 0.82 - (level - 14) * 0.045)
+  end
+
+  return math.max(0.22, 0.46 - (level - 23) * 0.004)
+end
+
+local function max_row_obstacles(level)
+  if level <= 14 then
+    return 1
+  end
+
+  if level <= 23 then
+    return 2
+  end
+
+  return 3
+end
+
+local function new_level_state(level, prestige)
+  local world_speed = world_speed_for_level(level)
+  local japanese_timer = 0
+
+  if State and State.japanese_timer then
+    japanese_timer = State.japanese_timer
+  end
+
   State = {
+    mode = "playing",
+    level = level,
+    prestige = prestige,
     car_x = SCREEN_W / 2 - CAR_W / 2,
+    car_y = CAR_START_Y,
+    world_speed = world_speed,
     road_scroll = 0,
     city_scroll = 0,
+    distance = 0,
+    target_distance = LEVEL_DISTANCE + level * 18,
+    obstacles = {},
+    spawn_timer = 0.7,
+    finish_timer = 0,
+    japanese_timer = japanese_timer,
   }
+end
+
+local function reset_state()
+  new_level_state(1, 0)
+end
+
+local function ensure_state()
+  if not State or not State.mode or not State.world_speed or not State.obstacles then
+    reset_state()
+    return
+  end
+
+  if not State.japanese_timer then
+    State.japanese_timer = 0
+  end
+end
+
+local function restart_level()
+  new_level_state(State.level, State.prestige)
+end
+
+local function start_next_level()
+  local next_level = State.level + 1
+  local prestige = State.prestige
+
+  if next_level > MAX_LEVEL then
+    prestige = prestige + 1
+    next_level = 1
+  end
+
+  new_level_state(next_level, prestige)
 end
 
 local function building_color(index)
@@ -132,9 +259,9 @@ local function draw_road()
   end
 end
 
-local function draw_car()
+local function draw_player_car()
   local x = math.floor(State.car_x)
-  local y = CAR_Y
+  local y = math.floor(State.car_y)
 
   gfx.rect_fill(x + 3, y + 1, CAR_W - 6, CAR_H - 2, gfx.COLOR_BLUE)
   gfx.rect_fill(x + 1, y + 7, CAR_W - 2, CAR_H - 12, gfx.COLOR_BLUE)
@@ -149,6 +276,270 @@ local function draw_car()
   gfx.rect_fill(x + CAR_W - 7, y + 1, 3, 2, gfx.COLOR_TRUE_WHITE)
 end
 
+local function draw_traffic_car(obstacle)
+  local x = math.floor(obstacle.x)
+  local y = math.floor(obstacle.y)
+  local color = gfx.COLOR_RED
+
+  if obstacle.kind == "trick_car" then
+    color = gfx.COLOR_PINK
+  elseif obstacle.kind == "prestige_car" then
+    color = gfx.COLOR_RED
+  elseif obstacle.variant == 1 then
+    color = gfx.COLOR_GREEN
+  elseif obstacle.variant == 2 then
+    color = gfx.COLOR_ORANGE
+  end
+
+  gfx.rect_fill(x + 3, y + 1, TRAFFIC_W - 6, TRAFFIC_H - 2, color)
+  gfx.rect_fill(x + 1, y + 8, TRAFFIC_W - 2, TRAFFIC_H - 13, color)
+  gfx.rect(x + 3, y + 1, TRAFFIC_W - 6, TRAFFIC_H - 2, gfx.COLOR_BLACK)
+  gfx.rect_fill(x + 5, y + 5, TRAFFIC_W - 10, 5, gfx.COLOR_LIGHT_GRAY)
+  gfx.rect_fill(x + 5, y + 18, TRAFFIC_W - 10, 4, gfx.COLOR_DARK_GRAY)
+  gfx.rect_fill(x, y + 8, 3, 7, gfx.COLOR_BLACK)
+  gfx.rect_fill(x + TRAFFIC_W - 3, y + 8, 3, 7, gfx.COLOR_BLACK)
+  gfx.rect_fill(x, y + 19, 3, 7, gfx.COLOR_BLACK)
+  gfx.rect_fill(x + TRAFFIC_W - 3, y + 19, 3, 7, gfx.COLOR_BLACK)
+
+  if obstacle.kind == "trick_car" then
+    gfx.rect_fill(x + 7, y + 12, 4, 4, gfx.COLOR_YELLOW)
+    gfx.rect(x + 6, y + 11, 6, 6, gfx.COLOR_INDIGO)
+  elseif obstacle.kind == "prestige_car" then
+    gfx.rect(x - 1, y, TRAFFIC_W + 2, TRAFFIC_H, gfx.COLOR_PINK)
+    gfx.rect_fill(x + 5, y + 12, 8, 3, gfx.COLOR_TRUE_WHITE)
+  end
+end
+
+local function draw_box(obstacle)
+  local x = math.floor(obstacle.x)
+  local y = math.floor(obstacle.y)
+
+  gfx.rect_fill(x, y, BOX_W, BOX_H, gfx.COLOR_BROWN)
+  gfx.rect(x, y, BOX_W, BOX_H, gfx.COLOR_BLACK)
+  gfx.line(x + 3, y + 3, x + BOX_W - 4, y + BOX_H - 4, gfx.COLOR_ORANGE)
+  gfx.line(x + BOX_W - 4, y + 3, x + 3, y + BOX_H - 4, gfx.COLOR_ORANGE)
+end
+
+local function draw_obstacles()
+  for _, obstacle in ipairs(State.obstacles) do
+    if obstacle.kind == "box" then
+      draw_box(obstacle)
+    else
+      draw_traffic_car(obstacle)
+    end
+  end
+end
+
+local function text_center(text, y, color)
+  local text_w = usagi.measure_text(text)
+  gfx.text(text, SCREEN_W / 2 - text_w / 2, y, color)
+end
+
+local function draw_hud()
+  local level_text = "LEVEL " .. State.level .. "/" .. MAX_LEVEL
+  local prestige_text = "PRESTIGE x" .. State.prestige
+  local tier_text = difficulty_label(State.level)
+  local progress_w = 88
+  local progress = clamp(State.distance / State.target_distance, 0, 1)
+
+  gfx.rect_fill(4, 4, 140, 24, gfx.COLOR_BLACK)
+  gfx.text(level_text, 8, 7, gfx.COLOR_TRUE_WHITE)
+  gfx.text(tier_text, 84, 7, gfx.COLOR_YELLOW)
+  gfx.rect(8, 18, progress_w, 5, gfx.COLOR_WHITE)
+  gfx.rect_fill(9, 19, math.floor((progress_w - 2) * progress), 3,
+    gfx.COLOR_GREEN)
+
+  gfx.rect_fill(SCREEN_W - 86, 4, 82, 15, gfx.COLOR_BLACK)
+  gfx.text(prestige_text, SCREEN_W - 82, 7, gfx.COLOR_TRUE_WHITE)
+
+  if japanese_trick_active() then
+    local minutes_left = math.ceil(State.japanese_timer / 60)
+    gfx.rect_fill(4, 32, 70, 12, gfx.COLOR_BLACK)
+    gfx.text("TRICK " .. minutes_left .. " MIN", 8, 34, gfx.COLOR_PINK)
+  end
+end
+
+local function draw_overlay()
+  if State.mode == "playing" then
+    return
+  end
+
+  gfx.rect_fill(48, 54, 224, 72, gfx.COLOR_BLACK)
+  gfx.rect(48, 54, 224, 72, gfx.COLOR_WHITE)
+
+  if State.mode == "game_over" then
+    text_center("CRASH!", 64, gfx.COLOR_RED)
+    text_center("GAME OVER - LEVEL " .. State.level, 82,
+      gfx.COLOR_TRUE_WHITE)
+    text_center("PRESS BTN1 TO RESTART", 104, gfx.COLOR_YELLOW)
+  elseif State.mode == "level_complete" then
+    text_center("LEVEL " .. State.level .. " COMPLETE", 68,
+      gfx.COLOR_GREEN)
+
+    if State.level == MAX_LEVEL then
+      text_center("PRESTIGE x" .. (State.prestige + 1), 86,
+        gfx.COLOR_YELLOW)
+      text_center("BTN1 STARTS LEVEL 1", 104, gfx.COLOR_TRUE_WHITE)
+    else
+      text_center("PRESS BTN1 FOR LEVEL " .. (State.level + 1), 94,
+        gfx.COLOR_YELLOW)
+    end
+  end
+end
+
+local function rects_overlap(a_x, a_y, a_w, a_h, b_x, b_y, b_w, b_h)
+  return a_x < b_x + b_w
+    and a_x + a_w > b_x
+    and a_y < b_y + b_h
+    and a_y + a_h > b_y
+end
+
+local function player_hits(obstacle)
+  return rects_overlap(
+    State.car_x + CRASH_PAD_X,
+    State.car_y + CRASH_PAD_Y,
+    CAR_W - CRASH_PAD_X * 2,
+    CAR_H - CRASH_PAD_Y * 2,
+    obstacle.x + obstacle.pad_x,
+    obstacle.y + obstacle.pad_y,
+    obstacle.w - obstacle.pad_x * 2,
+    obstacle.h - obstacle.pad_y * 2
+  )
+end
+
+local function make_obstacle(lane_index)
+  local kind = "car"
+  local w = TRAFFIC_W
+  local h = TRAFFIC_H
+  local pad_x = 3
+  local pad_y = 4
+
+  local special_roll = math.random()
+
+  if special_roll < PRESTIGE_CAR_CHANCE then
+    kind = "prestige_car"
+  elseif special_roll < PRESTIGE_CAR_CHANCE + TRICK_CAR_CHANCE then
+    kind = "trick_car"
+  elseif math.random() < 0.42 then
+    kind = "box"
+    w = BOX_W
+    h = BOX_H
+    pad_x = 2
+    pad_y = 2
+  end
+
+  return {
+    kind = kind,
+    x = LANES[lane_index] - w / 2,
+    y = -h - math.random(0, 28),
+    w = w,
+    h = h,
+    pad_x = pad_x,
+    pad_y = pad_y,
+    speed = State.world_speed + math.random(8, 30),
+    variant = math.random(0, 2),
+  }
+end
+
+local function spawn_obstacle_row()
+  local lanes = { 1, 2, 3 }
+  local count = math.random(1, max_row_obstacles(State.level))
+
+  if State.level <= 14 then
+    count = 1
+  elseif State.level <= 23 and math.random() < 0.28 then
+    count = 1
+  elseif State.level >= 24 and math.random() < 0.22 then
+    count = 3
+  end
+
+  for i = #lanes, 2, -1 do
+    local swap_i = math.random(1, i)
+    lanes[i], lanes[swap_i] = lanes[swap_i], lanes[i]
+  end
+
+  for i = 1, count do
+    table.insert(State.obstacles, make_obstacle(lanes[i]))
+  end
+end
+
+local function update_scrolling(dt)
+  State.road_scroll = (State.road_scroll + State.world_speed * dt)
+    % LANE_DASH_GAP
+  State.city_scroll = (State.city_scroll + State.world_speed * dt)
+    % CITY_LOOP_H
+end
+
+local function update_player(dt)
+  local move_x = 0
+  local move_y = 0
+
+  if input.held(input.LEFT) then
+    move_x = move_x - 1
+  end
+
+  if input.held(input.RIGHT) then
+    move_x = move_x + 1
+  end
+
+  if input.held(input.UP) then
+    move_y = move_y - 1
+  end
+
+  if input.held(input.DOWN) then
+    move_y = move_y + 1
+  end
+
+  State.car_x = clamp(State.car_x + move_x * CAR_SPEED * dt,
+    ROAD_LEFT, ROAD_RIGHT - CAR_W)
+  State.car_y = clamp(State.car_y + move_y * CAR_VERTICAL_SPEED * dt,
+    CAR_TOP, CAR_BOTTOM)
+end
+
+local function update_obstacles(dt)
+  State.spawn_timer = State.spawn_timer - dt
+
+  if State.spawn_timer <= 0 then
+    spawn_obstacle_row()
+    State.spawn_timer = spawn_interval_for_level(State.level)
+      + math.random() * 0.18
+  end
+
+  for i = #State.obstacles, 1, -1 do
+    local obstacle = State.obstacles[i]
+    obstacle.y = obstacle.y + obstacle.speed * dt
+
+    if player_hits(obstacle) then
+      if obstacle.kind == "trick_car" then
+        State.japanese_timer = JAPANESE_TRICK_SECONDS
+      elseif obstacle.kind == "prestige_car" then
+        State.prestige = State.prestige + PRESTIGE_CAR_REWARD
+      end
+
+      State.mode = "game_over"
+    elseif obstacle.y > SCREEN_H + 8 then
+      table.remove(State.obstacles, i)
+    end
+  end
+end
+
+local function update_level_progress(dt)
+  State.distance = State.distance + State.world_speed * dt
+
+  if State.distance >= State.target_distance then
+    State.distance = State.target_distance
+    State.mode = "level_complete"
+  end
+end
+
+local function update_japanese_trick(dt)
+  if (State.japanese_timer or 0) <= 0 then
+    return
+  end
+
+  State.japanese_timer = math.max(0, State.japanese_timer - dt)
+end
+
 function _config()
   return {
     name = "Hiroikku Resu",
@@ -161,27 +552,43 @@ function _init()
 end
 
 function _update(dt)
-  State.road_scroll = (State.road_scroll + WORLD_SPEED * dt) % LANE_DASH_GAP
-  State.city_scroll = (State.city_scroll + WORLD_SPEED * dt) % CITY_LOOP_H
+  ensure_state()
+  update_japanese_trick(dt)
 
-  local move = 0
+  if State.mode == "game_over" then
+    if input.pressed(input.BTN1) then
+      restart_level()
+    end
 
-  if input.held(input.LEFT) then
-    move = move - 1
+    return
   end
 
-  if input.held(input.RIGHT) then
-    move = move + 1
+  if State.mode == "level_complete" then
+    if input.pressed(input.BTN1) then
+      start_next_level()
+    end
+
+    return
   end
 
-  State.car_x = clamp(State.car_x + move * CAR_SPEED * dt,
-    ROAD_LEFT, ROAD_RIGHT - CAR_W)
+  update_scrolling(dt)
+  update_player(dt)
+  update_obstacles(dt)
+
+  if State.mode == "playing" then
+    update_level_progress(dt)
+  end
 end
 
 function _draw(_dt)
+  ensure_state()
+
   gfx.clear(gfx.COLOR_DARK_BLUE)
   draw_city_side(true)
   draw_city_side(false)
   draw_road()
-  draw_car()
+  draw_obstacles()
+  draw_player_car()
+  draw_hud()
+  draw_overlay()
 end
