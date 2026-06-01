@@ -3,20 +3,24 @@
 A prototype 2D obstacle-dodge driving game built with
 [Usagi](https://usagiengine.com/) in Lua.
 
-The game concept is simple: the player controls a car near the bottom of the
-screen while road scenery scrolls downward to simulate forward motion. Obstacles
-enter from the top of the screen, and the player dodges them for as long as
-possible.
+The game concept is simple: the player controls a blue pixel car near the
+bottom of the screen while a city road scrolls downward to simulate forward
+motion. Obstacles will enter from the top of the screen, and the player will
+dodge them for as long as possible.
 
 ## Status
 
-Early prototype. The repository currently contains the initial Usagi project
-stub and planning notes for the driving game loop.
+Initialized prototype. The current build has:
 
-Planned first playable loop:
+- A simple blue pixel car positioned near the bottom of the screen.
+- Left/right car movement clamped to the road bounds.
+- A vertical road with curbs and dashed yellow lane markers.
+- City buildings on both sides of the road.
+- Synchronized road and city scrolling through a shared `WORLD_SPEED` constant.
+- Stable building window patterns, so windows do not flicker while scrolling.
 
-- Move a car left and right near the bottom of the screen.
-- Scroll the road/background downward.
+Planned next playable-loop work:
+
 - Spawn obstacles from the top.
 - Detect collisions with simple rectangular hitboxes.
 - Show game-over and restart flow.
@@ -50,6 +54,11 @@ To run without live reload:
 usagi run
 ```
 
+Controls:
+
+- Left/right actions move the car horizontally. On keyboard, use the mappings
+  configured by Usagi for `input.LEFT` and `input.RIGHT`.
+
 ## Project Layout
 
 ```text
@@ -68,6 +77,28 @@ usagi run
 - Store mutable cross-frame state in `State`.
 - Use 2-space indentation and `snake_case` for Lua locals/functions.
 - Prefer Usagi's built-in drawing primitives until sprites are needed.
+- Keep road markings and city scenery on the same scroll speed unless there is a
+  deliberate gameplay reason to separate them.
+- Building window patterns should be based on stable building-local data, not
+  current screen coordinates, to avoid flicker during scrolling.
+
+## Verification
+
+Syntax check:
+
+```sh
+luac -p main.lua
+```
+
+Runtime check:
+
+```sh
+usagi run
+```
+
+In a headless environment without a display, `usagi run` may fail while opening
+the window with an X11/GLFW display error. In that case, verify with `luac -p`
+and run the game again in a graphical session.
 
 ## Export
 

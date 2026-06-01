@@ -10,6 +10,8 @@ Core concept:
 - The player controls a car positioned near the bottom of the screen.
 - The car dodges incoming obstacles.
 - The road/background scrolls downward to simulate the car moving forward.
+- The initialized scene uses a blue pixel car, a vertical city road, curbs,
+  dashed yellow lane markers, and buildings on both sides of the road.
 - The prototype should prioritize responsive controls, readable collision, and a
   clear sense of speed over visual polish.
 
@@ -62,13 +64,20 @@ missing, report that clearly instead of replacing the engine workflow.
 Favor a small, complete arcade loop:
 
 - Player car:
-  - Fixed near the bottom of the screen.
+  - Fixed near the bottom of the screen. The current implementation draws a
+    simple blue pixel car with Usagi primitives.
   - Moves left/right first; add vertical movement only if it improves dodging.
   - Clamp movement to the road bounds, not necessarily the full screen.
 - Background:
-  - Scroll visual road markings, lane lines, or tiles downward.
+  - Scroll visual road markings, lane lines, city buildings, or tiles downward.
   - Use a scroll offset accumulated from `dt`.
   - Wrap repeated background elements when they leave the screen.
+  - Keep road markings and city scenery visually synchronized unless a new
+    mechanic intentionally separates their speeds. The current implementation
+    uses one shared `WORLD_SPEED` for the road dashes and buildings.
+  - Keep repeated building window patterns stable in building-local coordinates;
+    do not derive lit windows from changing screen coordinates, because that
+    causes visible flicker while scrolling.
 - Obstacles:
   - Spawn above the top edge.
   - Move downward at the current game speed.
@@ -121,11 +130,18 @@ Before considering gameplay changes done:
 - Check that the game starts without Lua errors.
 - Check that the car remains within bounds.
 - Check that scrolling wraps cleanly.
+- Check that road lane markers and city buildings scroll at a consistent visual
+  speed.
+- Check that building windows do not flicker as buildings move.
 - Check that obstacles despawn.
 - Check that game-over and restart behavior work when present.
 
 If Usagi cannot be executed in the environment, note the exact command attempted
 and the failure.
+
+In a headless environment without a display, `usagi run` may fail while opening
+the window with an X11/GLFW display error. Still run a Lua syntax check such as
+`luac -p main.lua` when available.
 
 ## Editing Rules For Agents
 
