@@ -30,6 +30,13 @@ local TRAFFIC_W = 18
 local TRAFFIC_H = 28
 local CRASH_PAD_X = 4
 local CRASH_PAD_Y = 4
+local COIN_SIZE = 7
+local COIN_LEVEL_PERIOD = 3
+local COIN_SPAWN_INTERVAL = 0.78
+local COIN_SPAWN_CHANCE = 0.72
+local BANANA_COST = 67
+local BANANA_CLEAR_SECONDS = 1.15
+local BANANA_FLASH_SECONDS = 0.42
 local JAPANESE_TRICK_SECONDS = 60 * 60
 local TRICK_CAR_CHANCE = 0.08
 local PRESTIGE_CAR_CHANCE = 0.015
@@ -67,6 +74,10 @@ end
 
 local function japanese_trick_active()
   return (State.japanese_timer or 0) > 0
+end
+
+local function coin_level(level)
+  return level % COIN_LEVEL_PERIOD == 0
 end
 
 local function difficulty_label(level)
@@ -109,11 +120,16 @@ local function max_row_obstacles(level)
   return 3
 end
 
-local function new_level_state(level, prestige)
+local function new_level_state(level, prestige, keep_progress)
   local world_speed = world_speed_for_level(level)
+  local coins = 0
   local japanese_timer = 0
 
-  if State and State.japanese_timer then
+  if keep_progress and State and State.coins then
+    coins = State.coins
+  end
+
+  if keep_progress and State and State.japanese_timer then
     japanese_timer = State.japanese_timer
   end
 
@@ -129,14 +145,20 @@ local function new_level_state(level, prestige)
     distance = 0,
     target_distance = LEVEL_DISTANCE + level * 18,
     obstacles = {},
+    coins = coins,
+    pickups = {},
     spawn_timer = 0.7,
+    coin_spawn_timer = 0.55,
     finish_timer = 0,
     japanese_timer = japanese_timer,
+    banana_clear_timer = 0,
+    banana_flash_timer = 0,
+    banana_message_timer = 0,
   }
 end
 
 local function reset_state()
-  new_level_state(1, 0)
+  new_level_state(1, 0, false)
 end
 
 local function ensure_state()
@@ -148,10 +170,34 @@ local function ensure_state()
   if not State.japanese_timer then
     State.japanese_timer = 0
   end
+
+  if not State.coins then
+    State.coins = 0
+  end
+
+  if not State.pickups then
+    State.pickups = {}
+  end
+
+  if not State.coin_spawn_timer then
+    State.coin_spawn_timer = 0.55
+  end
+
+  if not State.banana_clear_timer then
+    State.banana_clear_timer = 0
+  end
+
+  if not State.banana_flash_timer then
+    State.banana_flash_timer = 0
+  end
+
+  if not State.banana_message_timer then
+    State.banana_message_timer = 0
+  end
 end
 
 local function restart_level()
-  new_level_state(State.level, State.prestige)
+  new_level_state(State.level, State.prestige, true)
 end
 
 local function start_next_level()
@@ -163,7 +209,7 @@ local function start_next_level()
     next_level = 1
   end
 
-  new_level_state(next_level, prestige)
+  new_level_state(next_level, prestige, true)
 end
 
 local function building_color(index)
@@ -320,12 +366,31 @@ local function draw_box(obstacle)
   gfx.line(x + BOX_W - 4, y + 3, x + 3, y + BOX_H - 4, gfx.COLOR_ORANGE)
 end
 
+local function draw_coin(coin)
+  local x = math.floor(coin.x)
+  local y = math.floor(coin.y)
+  local center_x = x + COIN_SIZE / 2
+  local center_y = y + COIN_SIZE / 2
+
+  gfx.circ_fill(center_x, center_y, COIN_SIZE / 2, gfx.COLOR_YELLOW)
+  gfx.circ(center_x, center_y, COIN_SIZE / 2, gfx.COLOR_ORANGE)
+  gfx.rect_fill(x + 3, y + 2, 1, COIN_SIZE - 3, gfx.COLOR_PEACH)
+end
+
 local function draw_obstacles()
   for _, obstacle in ipairs(State.obstacles) do
     if obstacle.kind == "box" then
       draw_box(obstacle)
     else
       draw_traffic_car(obstacle)
+    end
+  end
+end
+
+local function draw_pickups()
+  for _, pickup in ipairs(State.pickups) do
+    if pickup.kind == "coin" then
+      draw_coin(pickup)
     end
   end
 end
@@ -352,10 +417,32 @@ local function draw_hud()
   gfx.rect_fill(SCREEN_W - 86, 4, 82, 15, gfx.COLOR_BLACK)
   gfx.text(prestige_text, SCREEN_W - 82, 7, gfx.COLOR_TRUE_WHITE)
 
+  gfx.rect_fill(4, SCREEN_H - 20, 130, 16, gfx.COLOR_BLACK)
+  gfx.text("COINS " .. State.coins, 8, SCREEN_H - 17, gfx.COLOR_YELLOW)
+
+  local banana_color = gfx.COLOR_LIGHT_GRAY
+
+  if State.coins >= BANANA_COST then
+    banana_color = gfx.COLOR_YELLOW
+  end
+
+  gfx.rect_fill(SCREEN_W - 120, SCREEN_H - 20, 116, 16, gfx.COLOR_BLACK)
+  gfx.text("BTN2 BANANA " .. BANANA_COST, SCREEN_W - 116, SCREEN_H - 17,
+    banana_color)
+
+  if coin_level(State.level) then
+    gfx.rect_fill(4, 32, 92, 12, gfx.COLOR_BLACK)
+    gfx.text("COINS ON ROAD", 8, 34, gfx.COLOR_YELLOW)
+  end
+
+  if State.banana_message_timer > 0 then
+    text_center("BANANA!", 62, gfx.COLOR_YELLOW)
+  end
+
   if japanese_trick_active() then
     local minutes_left = math.ceil(State.japanese_timer / 60)
-    gfx.rect_fill(4, 32, 70, 12, gfx.COLOR_BLACK)
-    gfx.text("TRICK " .. minutes_left .. " MIN", 8, 34, gfx.COLOR_PINK)
+    gfx.rect_fill(4, 46, 70, 12, gfx.COLOR_BLACK)
+    gfx.text("TRICK " .. minutes_left .. " MIN", 8, 48, gfx.COLOR_PINK)
   end
 end
 
@@ -463,6 +550,25 @@ local function spawn_obstacle_row()
   end
 end
 
+local function make_coin_pickup(lane_index)
+  return {
+    kind = "coin",
+    x = LANES[lane_index] - COIN_SIZE / 2,
+    y = -COIN_SIZE - math.random(0, 18),
+    w = COIN_SIZE,
+    h = COIN_SIZE,
+    speed = State.world_speed,
+  }
+end
+
+local function spawn_coin_pickup()
+  if not coin_level(State.level) or math.random() > COIN_SPAWN_CHANCE then
+    return
+  end
+
+  table.insert(State.pickups, make_coin_pickup(math.random(1, #LANES)))
+end
+
 local function update_scrolling(dt)
   State.road_scroll = (State.road_scroll + State.world_speed * dt)
     % LANE_DASH_GAP
@@ -496,7 +602,65 @@ local function update_player(dt)
     CAR_TOP, CAR_BOTTOM)
 end
 
+local function update_banana_item(dt)
+  if State.banana_clear_timer > 0 then
+    State.banana_clear_timer = math.max(0, State.banana_clear_timer - dt)
+  end
+
+  if State.banana_flash_timer > 0 then
+    State.banana_flash_timer = math.max(0, State.banana_flash_timer - dt)
+  end
+
+  if State.banana_message_timer > 0 then
+    State.banana_message_timer = math.max(0, State.banana_message_timer - dt)
+  end
+
+  if input.pressed(input.BTN2) and State.coins >= BANANA_COST then
+    State.coins = State.coins - BANANA_COST
+    State.obstacles = {}
+    State.banana_clear_timer = BANANA_CLEAR_SECONDS
+    State.banana_flash_timer = BANANA_FLASH_SECONDS
+    State.banana_message_timer = BANANA_FLASH_SECONDS
+    effect.screen_shake(0.16, 2)
+    effect.flash(0.14, gfx.COLOR_YELLOW)
+  end
+end
+
+local function update_pickups(dt)
+  State.coin_spawn_timer = State.coin_spawn_timer - dt
+
+  if State.coin_spawn_timer <= 0 then
+    spawn_coin_pickup()
+    State.coin_spawn_timer = COIN_SPAWN_INTERVAL + math.random() * 0.2
+  end
+
+  for i = #State.pickups, 1, -1 do
+    local pickup = State.pickups[i]
+    pickup.y = pickup.y + pickup.speed * dt
+
+    if pickup.kind == "coin" and rects_overlap(
+      State.car_x + 2,
+      State.car_y + 2,
+      CAR_W - 4,
+      CAR_H - 4,
+      pickup.x,
+      pickup.y,
+      pickup.w,
+      pickup.h
+    ) then
+      State.coins = State.coins + 1
+      table.remove(State.pickups, i)
+    elseif pickup.y > SCREEN_H + 8 then
+      table.remove(State.pickups, i)
+    end
+  end
+end
+
 local function update_obstacles(dt)
+  if State.banana_clear_timer > 0 then
+    return
+  end
+
   State.spawn_timer = State.spawn_timer - dt
 
   if State.spawn_timer <= 0 then
@@ -573,6 +737,8 @@ function _update(dt)
 
   update_scrolling(dt)
   update_player(dt)
+  update_banana_item(dt)
+  update_pickups(dt)
   update_obstacles(dt)
 
   if State.mode == "playing" then
@@ -587,6 +753,7 @@ function _draw(_dt)
   draw_city_side(true)
   draw_city_side(false)
   draw_road()
+  draw_pickups()
   draw_obstacles()
   draw_player_car()
   draw_hud()
