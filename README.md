@@ -4,7 +4,7 @@ A prototype 2D obstacle-dodge driving game built with
 [Usagi](https://usagiengine.com/) in Lua.
 
 The game concept is simple: the player controls a blue pixel car near the
-bottom of the screen while a city road scrolls downward to simulate forward
+bottom of the screen while a space road scrolls downward to simulate forward
 motion. Obstacles will enter from the top of the screen, and the player will
 dodge them while clearing levels, collecting coins on some roads, and spending
 coins on a banana item.
@@ -16,14 +16,25 @@ The current prototype has:
 - A simple blue pixel car positioned near the bottom of the screen.
 - Left/right/up/down car movement clamped to the road bounds and driving area.
 - A vertical road with curbs and dashed yellow lane markers.
-- City buildings on both sides of the road.
-- Synchronized road and city scrolling through the current world speed.
-- Stable building window patterns, so windows do not flicker while scrolling.
-- Spawned traffic cars and box obstacles with forgiving rectangular hitboxes.
+- A space background with scrolling stars and strange planets.
+- Spawned traffic cars, children, and box obstacles with forgiving rectangular
+  hitboxes.
+- Rare green traffic cars, capped at two spawns per level.
 - Level progress, level-complete flow, game-over flow, and restart.
+- A level-100 reward choice: gain prestige, become coach, teleport to a city,
+  or start a harder obby run.
+- A top-screen speed readout showing the current road speed.
 - Coin pickups on selected levels, currently every third level.
 - A persistent coin wallet across level changes and level restarts.
 - A banana item that costs 67 coins and clears current obstacles when used.
+- Plasma coins as a prototype paid currency and a gold car skin that costs 456
+  plasma coins.
+- A start screen that begins the game with keyboard `4`.
+- A start-screen settings panel with car, background, and music pages.
+- Background choices: space and void free, people cheering for 1345 plasma
+  coins, and village for 20 coins.
+- Language cycling from the start screen with almost any key, button, or mouse
+  click across Japanese, Korean, English, Spanish, Chinese, and Russian.
 
 ## Requirements
 
@@ -56,10 +67,21 @@ usagi run
 
 Controls:
 
+- `input.KEY_4` starts the game from the start screen.
+- `input.KEY_5` opens settings from the start screen.
+- Almost any key, action button, arrow direction, or mouse click cycles the UI
+  language from the start screen, except the start/settings keys.
+- In settings, `input.UP` / `input.DOWN` switch car/background/music pages.
+- On the car/background pages, `input.LEFT` / `input.RIGHT` pick an option,
+  `input.BTN3` buys/equips it, and `input.KEY_4` returns to the start screen.
 - `input.LEFT` / `input.RIGHT` move the car horizontally.
 - `input.UP` / `input.DOWN` move the car vertically within the driving area.
 - `input.BTN1` restarts after a crash or advances after level completion.
 - `input.BTN2` buys and uses the banana item when you have at least 67 coins.
+- `input.BTN3` simulates buying plasma coins, then buys the gold car once you
+  have at least 456 plasma coins.
+- After level 100, choose `input.BTN1` for prestige, `input.BTN2` for coach,
+  `input.BTN3` for city teleport, or `input.KEY_4` for harder obby.
 
 On keyboard, use the mappings configured by Usagi for those abstract actions.
 
@@ -81,10 +103,10 @@ On keyboard, use the mappings configured by Usagi for those abstract actions.
 - Store mutable cross-frame state in `State`.
 - Use 2-space indentation and `snake_case` for Lua locals/functions.
 - Prefer Usagi's built-in drawing primitives until sprites are needed.
-- Keep road markings and city scenery on the same scroll speed unless there is a
+- Keep road markings and space scenery readable at speed unless there is a
   deliberate gameplay reason to separate them.
-- Building window patterns should be based on stable building-local data, not
-  current screen coordinates, to avoid flicker during scrolling.
+- Japanese, Korean, and Chinese text require a CJK-capable `font.png`; the
+  bundled Usagi font does not include those glyphs.
 
 ## Verification
 
